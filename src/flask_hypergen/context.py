@@ -74,7 +74,7 @@ class Context(threading.local):
                     self.ctx = self.ctx.set(at, pmap(items))
                 else:
                     new_value_at = self.ctx[at].update(pmap(items))
-                    if not new_value_at:
+                    if new_value_at is None:
                         raise TypeError(
                             'Not immutable context variable attempted updated. If you want to '
                             'nest with context() statements you must use a pmap() or another '
@@ -102,7 +102,7 @@ def user_resolve(request: Request) -> Any:
         return None
     try:
         return current_user._get_current_object()
-    except RuntimeError:
+    except (RuntimeError, AttributeError):
         return None
 
 

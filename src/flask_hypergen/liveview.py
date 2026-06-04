@@ -177,7 +177,7 @@ class LiveviewCallable(BaseViewCallable, Protocol):
     is_hypergen_liveview: bool
 
 
-class ActionCallable(RoutableCallable, Protocol):
+class ActionCallable(BaseViewCallable, Protocol):
     pass
 
 
@@ -422,7 +422,7 @@ def callback(
                 'debug': current_app.debug if has_app_context() else False,
                 'meta': meta,
                 'headers': headers,
-                'eachUrlBlocks': each_url_blocks,
+                'blocksEachUrl': each_url_blocks,
                 'timeout': timeout,
             },
             return_=True,
@@ -442,7 +442,7 @@ def callback(
             'clear': clear,
             'meta': meta,
             'when': when,
-            'eachUrlBlocks': each_url_blocks,
+            'blocksEachUrl': each_url_blocks,
             'timeout': timeout,
         }.items()
         if value
@@ -657,6 +657,7 @@ def action(
             return json_commands_response(full.context.hypergen.commands)
 
     wrapped = cast(ActionCallable, _)
+    wrapped.original_func = func
     wrapped.supports_hypergen_callback = True
     route_register(
         router,
@@ -672,6 +673,7 @@ def action(
 ENCODINGS = {
     date: lambda o: {'_': ['date', str(o)]},
     datetime: lambda o: {'_': ['datetime', str(o)]},
+    dt_time: lambda o: {'_': ['time', str(o)]},
     tuple: lambda o: {'_': ['tuple', list(o)]},
     deque: lambda o: {'_': ['deque', list(o)]},
     set: lambda o: {'_': ['set', list(o)]},

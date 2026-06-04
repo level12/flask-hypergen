@@ -17,7 +17,7 @@ hooks = [
 
 [[repos]]
 repo = 'https://github.com/astral-sh/ruff-pre-commit'
-rev = "v0.15.12"
+rev = "v0.15.13"
 hooks = [
   { id = 'ruff', exclude = 'tasks/bump' },
   # Due to the Ruff config we use (see comment in pyproject.toml), it's possible that the

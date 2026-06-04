@@ -143,7 +143,13 @@ def check_perms(
             raise Forbidden()
         login_target = login_url
         if login_target is None:
-            login_manager = current_app.extensions.get('login_manager')
+            login_manager = getattr(
+                current_app,
+                'login_manager',
+                None,
+            ) or current_app.extensions.get(
+                'login_manager',
+            )
             login_target = getattr(login_manager, 'login_view', None)
         if not login_target:
             return Response(status=403)
@@ -285,7 +291,7 @@ def plugins_exit_stack(method_name: str) -> Iterator[None]:
     with ExitStack() as stack:
         for plugin in context.hypergen.plugins:
             if hasattr(plugin, method_name):
-                stack.enter_context(plugin.context())
+                stack.enter_context(getattr(plugin, method_name)())
         yield
 
 

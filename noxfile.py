@@ -13,6 +13,7 @@ nox.options.default_venv_backend = 'uv'
 @nox.session
 def pytest(session: nox.Session):
     uv_sync(session)
+    session.run('playwright', 'install', 'chromium')
     pytest_run(session)
 
 

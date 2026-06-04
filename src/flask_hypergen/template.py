@@ -454,7 +454,6 @@ class base_element(ContextDecorator):
         if key == 'class' and type(value) in (list, tuple, set):
             return [' ', key, '="', t(' '.join(value)), '"']
         value = '' if value is None else t(value)
-        assert '"' not in value, 'How dare you put a " in my attributes! :)'
         return [' ', key, '="', value, '"']
 
     def start(self) -> list[Any]:
