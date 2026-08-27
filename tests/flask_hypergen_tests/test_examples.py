@@ -7,6 +7,7 @@ def test_example_routes_render(client):
         '/auth/': 'Authentication example',
         '/hellocoreonly/counter': 'Core-only wiring',
         '/hellohypergen/counter': 'Decorator wiring',
+        '/classviews/counter': 'Class-based view wiring',
         '/inputs/demo': 'Read values from the browser',
         '/commands/demo': 'Explicit command responses',
         '/apptemplate/counter': 'Context-manager base template',
@@ -36,6 +37,7 @@ def test_example_index_lists_examples(client):
     for href in (
         '/hellocoreonly/counter',
         '/hellohypergen/counter',
+        '/classviews/counter',
         '/inputs/demo',
         '/commands/demo',
         '/apptemplate/counter',
@@ -71,6 +73,30 @@ def test_hypergen_increment_returns_commands(client):
     assert 'hypergen.morph' in payload
     assert 'Decorator wiring' in payload
     assert '/hellohypergen/increment",[2]' in payload
+
+
+def test_classview_increment_returns_commands(client):
+    response = client.post(
+        '/classviews/increment',
+        data={'hypergen_data': dumps({'args': [1]})},
+        headers={'Referer': 'http://localhost/classviews/counter'},
+    )
+    payload = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert 'hypergen.morph' in payload
+    assert 'Class-based view wiring' in payload
+    assert '/classviews/increment",[2]' in payload
+
+
+def test_classview_partial_load_returns_commands(client):
+    response = client.post(
+        '/classviews/counter',
+        headers={'X-Hypergen-Partial': '1'},
+    )
+    payload = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert 'hypergen.morph' in payload
+    assert 'Class-based view wiring' in payload
 
 
 def test_inputs_submit_returns_summary(client):

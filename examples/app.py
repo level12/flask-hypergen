@@ -3,6 +3,7 @@ from flask_login import LoginManager
 
 import examples.apptemplate as apptemplate
 import examples.auth as auth
+import examples.classviews as classviews
 import examples.commands as commands
 import examples.hellocoreonly as hellocoreonly
 import examples.hellohypergen as hellohypergen
@@ -30,6 +31,7 @@ def create_app(testing: bool = False, database_url: str | None = None) -> Flask:
     app.register_blueprint(index.bp)
     app.register_blueprint(hellocoreonly.bp)
     app.register_blueprint(hellohypergen.bp)
+    app.register_blueprint(classviews.bp)
     app.register_blueprint(inputs.bp)
     app.register_blueprint(commands.bp)
     app.register_blueprint(apptemplate.bp)
