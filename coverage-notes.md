@@ -102,11 +102,11 @@ its lazy loader is invoked), which is not the case in the standard test environm
 
 Two negative branch-partials in `LiveviewPluginBase.template_after`:
 
-- **`330->349`** — the path taken when an action `base_view` produces a resolver match
+- **`388->406`** — the path taken when an action `base_view` produces a resolver match
   whose `func` is `None` (so the isolated re-render is skipped). The positive case
   (a resolvable base view) is tested; this negative branch is a guard against an
   unresolvable referer.
-- **`356->362`** — the path taken when `self.morph` is false or there is no `'into'` in
+- **`413->419`** — the path taken when `self.morph` is false or there is no `'into'` in
   the hypergen context, so the morph commands are not appended. The morph-enabled path
   is tested; this branch covers the non-morphing configuration.
 

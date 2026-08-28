@@ -3,6 +3,7 @@ from typing import ClassVar
 
 from flask import Flask
 from flask.testing import FlaskClient
+import pytest
 
 from flask_hypergen import (
     NO_PERM_REQUIRED,
@@ -18,6 +19,17 @@ from flask_hypergen.tags import button, div, p
 
 
 class TestHypergenMethodView:
+    def test_hypergen_options_are_required(self, app: Flask) -> None:
+        class Unconfigured(HypergenMethodView):
+            def get(self) -> None:
+                p('unreachable')
+
+        with pytest.raises(
+            TypeError,
+            match=r'Unconfigured\.hypergen_options must be configured',
+        ):
+            Unconfigured.register(app, '/unconfigured')
+
     def test_liveview_and_action_protocols(self, app: Flask, client: FlaskClient) -> None:
         class Page(HypergenMethodView):
             hypergen_options = LiveviewOptions(perm=NO_PERM_REQUIRED)
@@ -230,3 +242,141 @@ class TestHypergenMethodView:
         assert response.status_code == 200
         assert b'Overridden to liveview' in response.data
         assert view.hypergen_kind is HypergenEndpointKind.LIVEVIEW
+
+    def test_partial_disabled_does_not_add_post(
+        self,
+        app: Flask,
+        client: FlaskClient,
+    ) -> None:
+        class GetOnly(HypergenMethodView):
+            hypergen_options = LiveviewOptions(perm=NO_PERM_REQUIRED, partial=False)
+
+            def get(self) -> None:
+                p('GET only')
+
+        GetOnly.register(app, '/get-only', endpoint='get-only')
+
+        assert client.get('/get-only').status_code == 200
+        assert client.post('/get-only').status_code == 405
+
+    def test_explicit_method_without_handler_returns_405(
+        self,
+        app: Flask,
+        client: FlaskClient,
+    ) -> None:
+        class GetOnly(HypergenMethodView):
+            hypergen_options = LiveviewOptions(perm=NO_PERM_REQUIRED, partial=False)
+
+            def get(self) -> None:
+                p('GET only')
+
+        GetOnly.register(
+            app,
+            '/missing-patch-handler',
+            endpoint='missing-patch-handler',
+            methods=['PATCH'],
+        )
+
+        assert client.patch('/missing-patch-handler').status_code == 405
+
+    def test_head_falls_back_to_get(self, app: Flask, client: FlaskClient) -> None:
+        calls = []
+
+        class Page(HypergenMethodView):
+            hypergen_options = LiveviewOptions(perm=NO_PERM_REQUIRED, partial=False)
+
+            def get(self) -> None:
+                calls.append('get')
+                p('page')
+
+        Page.register(app, '/head-fallback', endpoint='head-fallback')
+
+        response = client.head('/head-fallback')
+
+        assert response.status_code == 200
+        assert calls == ['get']
+
+    def test_custom_dispatch_uses_liveview_method_defaults(
+        self,
+        app: Flask,
+        client: FlaskClient,
+    ) -> None:
+        class CustomDispatch(HypergenMethodView):
+            hypergen_options = LiveviewOptions(perm=NO_PERM_REQUIRED, partial=False)
+
+            def dispatch_request(self, **kwargs) -> None:
+                p('custom liveview dispatch')
+
+        view = CustomDispatch.register(
+            app,
+            '/custom-liveview-dispatch',
+            endpoint='custom-liveview-dispatch',
+        )
+
+        response = client.get('/custom-liveview-dispatch')
+
+        assert response.status_code == 200
+        assert b'custom liveview dispatch' in response.data
+        with app.test_request_context():
+            assert view.reverse() == '/custom-liveview-dispatch'
+
+    def test_custom_dispatch_uses_action_method_defaults(
+        self,
+        app: Flask,
+        client: FlaskClient,
+    ) -> None:
+        class CustomDispatch(HypergenMethodView):
+            hypergen_options = ActionOptions(perm=NO_PERM_REQUIRED, target_id='result')
+
+            def dispatch_request(self, **kwargs) -> None:
+                p('custom action dispatch', id_='result')
+
+        CustomDispatch.register(
+            app,
+            '/custom-action-dispatch',
+            endpoint='custom-action-dispatch',
+        )
+
+        response = client.post(
+            '/custom-action-dispatch',
+            data={'hypergen_data': dumps({'args': []})},
+        )
+
+        assert response.status_code == 200
+        assert ['hypergen.morph', 'result', '<p id="result">custom action dispatch</p>'] in loads(
+            response.data,
+        )
+
+    def test_shared_base_renderer_reuses_instance(self, app: Flask) -> None:
+        instances = []
+
+        class Shared(HypergenMethodView):
+            init_every_request = False
+
+            def __init__(self, value: str) -> None:
+                self.value = value
+                instances.append(self)
+
+            def get(self) -> str:
+                return self.value
+
+        render = Shared.base_renderer_create(('shared',), {})
+
+        with app.app_context():
+            assert render() == 'shared'
+            assert render() == 'shared'
+        assert len(instances) == 1
+
+    def test_dispatch_without_hypergen_context_and_missing_base_get(self, app: Flask) -> None:
+        class Plain(HypergenMethodView):
+            def get(self, item_id: int) -> int:
+                return item_id
+
+        class ActionOnly(HypergenMethodView):
+            def post(self) -> None:
+                pass
+
+        with app.test_request_context(method='GET'):
+            assert Plain().dispatch_request(item_id=7) == 7
+            with pytest.raises(TypeError, match=r'ActionOnly must define get\(\)'):
+                ActionOnly().hypergen_render_base()
