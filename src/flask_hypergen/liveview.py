@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import date, datetime
 from datetime import time as dt_time
+from enum import StrEnum
 from functools import wraps
 import json
-from typing import Any, Protocol, TypeGuard, cast
+from typing import Any, ClassVar, Protocol, TypeGuard, cast
 
-from flask import Blueprint, Flask, Response, current_app, has_app_context
+from flask import Blueprint, Flask, Response, abort, current_app, has_app_context
 from flask import request as flask_request
+from flask.views import MethodView
 
 from flask_hypergen.context import c, context, context_init_app, contextlist
 import flask_hypergen.hypergen as hypergen_mod
@@ -49,7 +52,12 @@ __all__ = sorted(
         'JS_COERCE_FUNCS',
         'JS_VALUE_FUNCS',
         'LOGIN_REQUIRED',
+        'ActionOptions',
+        'HypergenEndpointKind',
+        'HypergenOptions',
+        'HypergenMethodView',
         'LiveviewPlugin',
+        'LiveviewOptions',
         'NO_PERM_REQUIRED',
         'THIS',
         'action',
@@ -171,6 +179,8 @@ def namespace_resolve(func: Callable[..., Any]) -> str:
 
 class BaseViewCallable(RoutableCallable, Protocol):
     original_func: Callable[..., Any]
+    hypergen_render: Callable[..., Any]
+    hypergen_kind: HypergenEndpointKind
 
 
 class LiveviewCallable(BaseViewCallable, Protocol):
@@ -191,6 +201,54 @@ class CallbackRenderer(Protocol):
     hypergen_callback_signature: tuple[str, tuple[Any, ...], dict[str, Any]]
 
     def __call__(self, element: base_element, key: str, value: Any) -> list[Any]: ...
+
+
+class HypergenEndpointKind(StrEnum):
+    LIVEVIEW = 'liveview'
+    ACTION = 'action'
+
+
+@dataclass(frozen=True, kw_only=True)
+class HypergenOptions:
+    """Options shared by liveviews and actions."""
+
+    base_template: Callable[..., Any] | None = None
+    target_id: str | None = None
+    perm: str | tuple[str, ...] | None = None
+    any_perm: bool = False
+    login_url: str | None = None
+    raise_exception: bool = False
+    redirect_field_name: str | None = None
+    partial: bool = True
+    appstate: Any = None
+    user_plugins: tuple[object, ...] = ()
+
+    def resolve_rendering(
+        self,
+        func: Callable[..., Any],
+    ) -> tuple[str | None, Callable[..., Any] | None]:
+        """Validate and resolve options shared by liveviews and actions."""
+        if self.perm != NO_PERM_REQUIRED:
+            assert self.perm, 'perm is a required keyword argument'
+        target_id = self.target_id
+        if target_id is None:
+            target_id = getattr(self.base_template, 'target_id', None)
+        if self.base_template and self.partial and not target_id:
+            raise Exception(f'{func}: Partial loading requires a target_id.')
+        partial_base_template = self.base_template if self.partial else None
+        return target_id, partial_base_template
+
+
+@dataclass(frozen=True, kw_only=True)
+class LiveviewOptions(HypergenOptions):
+    """Rendering options for a liveview function or ``HypergenMethodView``."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class ActionOptions(HypergenOptions):
+    """Rendering options for an action function or ``HypergenMethodView``."""
+
+    base_view: BaseViewCallable | None = None
 
 
 def _hypergen_html(template: Callable[..., Any]) -> str:
@@ -336,8 +394,7 @@ class ActionPlugin(LiveviewPluginBase):
                     target_id=None,
                     event_handler_callbacks=extra_event_handler_callbacks,
                 ):
-                    self.base_view.original_func(
-                        c.request,
+                    self.base_view.hypergen_render(
                         *referer_resolver_match.args,
                         **referer_resolver_match.kwargs,
                     )
@@ -494,92 +551,31 @@ def liveview(
     appstate: Any = None,
     user_plugins: list[object] | None = None,
 ) -> LiveviewCallable:
-    if perm != NO_PERM_REQUIRED:
-        assert perm, 'perm is a required keyword argument'
-    if target_id is None:
-        target_id = getattr(base_template, 'target_id', None)
-    if base_template and partial and not target_id:
-        raise Exception(f'{func}: Partial loading requires a target_id.')
-    partial_base_template = base_template if partial else None
-    original_func = func
-    user_plugins = user_plugins or []
-
-    @wraps(func)
-    def _(*args, **kwargs):
-        request = flask_request
-        perm_check = check_perms(
-            request,
-            perm,
-            login_url=login_url,
-            raise_exception=raise_exception,
-            any_perm=any_perm,
-            redirect_field_name=redirect_field_name,
-        )
-        if not perm_check.ok:
-            return perm_check.response
-        if partial and _request_header(request, 'X-Hypergen-Partial') == '1':
-            with c(
-                at='hypergen',
-                matched_perms=perm_check.matched_perms,
-                partial_base_template=partial_base_template,
-                liveview_resolver_match=liveview_resolver_match(),
-            ):
-                full = hypergen(
-                    func,
-                    request,
-                    *args,
-                    **kwargs,
-                    settings={
-                        'action': True,
-                        'returns': FULL,
-                        'target_id': target_id,
-                        'appstate': appstate,
-                        'namespace': namespace_resolve(_),
-                        'prepend_commands': False,
-                        'user_plugins': user_plugins,
-                    },
-                )
-                assert isinstance(full, HypergenResult)
-                if _is_redirect_response(full.template_result):
-                    return callback_redirect_response(full.template_result)
-                return json_commands_response(full.context.hypergen.commands)
-        with c(
-            at='hypergen',
-            matched_perms=perm_check.matched_perms,
-            partial_base_template=partial_base_template,
-            liveview_resolver_match=liveview_resolver_match(),
-        ):
-            full = hypergen(
-                func,
-                request,
-                *args,
-                **kwargs,
-                settings={
-                    'liveview': True,
-                    'returns': FULL,
-                    'base_template': base_template,
-                    'appstate': appstate,
-                    'namespace': namespace_resolve(_),
-                    'user_plugins': user_plugins,
-                },
-            )
-            assert isinstance(full, HypergenResult)
-            if isinstance(full.template_result, Response):
-                return full.template_result
-            return Response(full.html, mimetype='text/html')
-
-    wrapped = cast(LiveviewCallable, _)
-    wrapped.original_func = original_func
-    wrapped.is_hypergen_liveview = True
-    route_register(
-        router,
-        _,
-        rule=rule,
-        methods=methods or (['GET', 'POST'] if partial else ['GET']),
-        endpoint=endpoint,
+    options = LiveviewOptions(
         base_template=base_template,
+        perm=perm,
+        any_perm=any_perm,
+        login_url=login_url,
+        raise_exception=raise_exception,
+        redirect_field_name=redirect_field_name,
+        partial=partial,
+        target_id=target_id,
+        appstate=appstate,
+        user_plugins=tuple(user_plugins or ()),
     )
-    return wrapped
+    wrapped = HypergenMethodView._liveview_wrap(func, options)
+    return cast(
+        LiveviewCallable,
+        HypergenMethodView._route_finalize(
+            router,
+            wrapped,
+            kind=HypergenEndpointKind.LIVEVIEW,
+            rule=rule,
+            methods=methods or (['GET', 'POST'] if partial else ['GET']),
+            endpoint=endpoint,
+            base_template=base_template,
+        ),
+    )
 
 
 @wrap2
@@ -601,73 +597,369 @@ def action(
     appstate: Any = None,
     user_plugins: list[object] | None = None,
 ) -> ActionCallable:
-    if perm != NO_PERM_REQUIRED:
-        assert perm, 'perm is a required keyword argument'
-    if target_id is None:
-        target_id = getattr(base_template, 'target_id', None)
-    if base_template and partial and not target_id:
-        raise Exception(f'{func}: Partial loading requires a target_id.')
-    partial_base_template = base_template if partial else None
-    user_plugins = user_plugins or []
-
-    @wraps(func)
-    def _(*args, **kwargs):
-        request = flask_request
-        perm_check = check_perms(
-            request,
-            perm,
-            login_url=login_url,
-            raise_exception=raise_exception,
-            any_perm=any_perm,
-            redirect_field_name=redirect_field_name,
-        )
-        if not perm_check.ok:
-            if _is_redirect_response(perm_check.response):
-                return callback_redirect_response(perm_check.response)
-            return perm_check.response or Response(status=403)
-        action_args = loads(request.form['hypergen_data'])['args']
-        with c(
-            at='hypergen',
-            matched_perms=perm_check.matched_perms,
-            partial_base_template=partial_base_template,
-            liveview_resolver_match=liveview_resolver_match(for_action=True),
-        ):
-            full = hypergen(
-                func,
-                request,
-                *action_args,
-                **kwargs,
-                settings={
-                    'action': True,
-                    'returns': FULL,
-                    'target_id': target_id,
-                    'appstate': appstate,
-                    'namespace': namespace_resolve(_),
-                    'base_view': base_view,
-                    'user_plugins': user_plugins,
-                },
-            )
-            assert isinstance(full, HypergenResult)
-            if _is_redirect_response(full.template_result):
-                return callback_redirect_response(full.template_result)
-            if isinstance(full.template_result, Response):
-                return full.template_result
-            if type(full.template_result) is list:
-                return json_commands_response(full.template_result)
-            return json_commands_response(full.context.hypergen.commands)
-
-    wrapped = cast(ActionCallable, _)
-    wrapped.original_func = func
-    wrapped.supports_hypergen_callback = True
-    route_register(
-        router,
-        _,
-        rule=rule,
-        methods=methods or ['POST'],
-        endpoint=endpoint,
+    options = ActionOptions(
         base_template=base_template,
+        target_id=target_id,
+        perm=perm,
+        any_perm=any_perm,
+        login_url=login_url,
+        raise_exception=raise_exception,
+        redirect_field_name=redirect_field_name,
+        partial=partial,
+        base_view=base_view,
+        appstate=appstate,
+        user_plugins=tuple(user_plugins or ()),
     )
-    return wrapped
+    wrapped = HypergenMethodView._action_wrap(func, options)
+    return cast(
+        ActionCallable,
+        HypergenMethodView._route_finalize(
+            router,
+            wrapped,
+            kind=HypergenEndpointKind.ACTION,
+            rule=rule,
+            methods=methods or ['POST'],
+            endpoint=endpoint,
+            base_template=base_template,
+        ),
+    )
+
+
+class HypergenMethodView(MethodView):
+    """A Flask ``MethodView`` registered as one Hypergen endpoint kind.
+
+    Configure the endpoint with either ``LiveviewOptions`` or ``ActionOptions``, implement
+    ``get()`` or ``post()``, then call ``register()``. The class methods in the registration
+    pipeline and the handler/base-render methods are intentionally overridable independently.
+    """
+
+    hypergen_options: ClassVar[LiveviewOptions | ActionOptions | None] = None
+
+    @staticmethod
+    def _invoke_view(
+        func: Callable[..., Any],
+        request: Any,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+    ) -> Any:
+        if getattr(func, 'is_hypergen_method_view', False):
+            return func(**kwargs)
+        return func(request, *args, **kwargs)
+
+    @classmethod
+    def _renderer_for(cls, func: Callable[..., Any]) -> Callable[..., Any]:
+        def render(*args: Any, **kwargs: Any) -> Any:
+            return cls._invoke_view(func, c.request, args, kwargs)
+
+        return render
+
+    @classmethod
+    def _template_for(
+        cls,
+        func: Callable[..., Any],
+        request: Any,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+    ) -> Callable[[], Any]:
+        def template() -> Any:
+            return cls._invoke_view(func, request, args, kwargs)
+
+        return template
+
+    @classmethod
+    def _liveview_wrap(
+        cls,
+        func: Callable[..., Any],
+        options: LiveviewOptions,
+    ) -> LiveviewCallable:
+        target_id, partial_base_template = options.resolve_rendering(func)
+
+        @wraps(func)
+        def _(*args, **kwargs):
+            request = flask_request
+            perm_check = check_perms(
+                request,
+                options.perm,
+                login_url=options.login_url,
+                raise_exception=options.raise_exception,
+                any_perm=options.any_perm,
+                redirect_field_name=options.redirect_field_name,
+            )
+            if not perm_check.ok:
+                return perm_check.response
+            template = cls._template_for(func, request, args, kwargs)
+            if options.partial and _request_header(request, 'X-Hypergen-Partial') == '1':
+                with c(
+                    at='hypergen',
+                    matched_perms=perm_check.matched_perms,
+                    partial_base_template=partial_base_template,
+                    liveview_resolver_match=liveview_resolver_match(),
+                    partial_request=True,
+                ):
+                    full = hypergen(
+                        template,
+                        settings={
+                            'action': True,
+                            'returns': FULL,
+                            'target_id': target_id,
+                            'appstate': options.appstate,
+                            'namespace': namespace_resolve(_),
+                            'prepend_commands': False,
+                            'user_plugins': list(options.user_plugins),
+                        },
+                    )
+                    assert isinstance(full, HypergenResult)
+                    if _is_redirect_response(full.template_result):
+                        return callback_redirect_response(full.template_result)
+                    return json_commands_response(full.context.hypergen.commands)
+            with c(
+                at='hypergen',
+                matched_perms=perm_check.matched_perms,
+                partial_base_template=partial_base_template,
+                liveview_resolver_match=liveview_resolver_match(),
+            ):
+                full = hypergen(
+                    template,
+                    settings={
+                        'liveview': True,
+                        'returns': FULL,
+                        'base_template': options.base_template,
+                        'appstate': options.appstate,
+                        'namespace': namespace_resolve(_),
+                        'user_plugins': list(options.user_plugins),
+                    },
+                )
+                assert isinstance(full, HypergenResult)
+                if isinstance(full.template_result, Response):
+                    return full.template_result
+                return Response(full.html, mimetype='text/html')
+
+        wrapped = cast(LiveviewCallable, _)
+        wrapped.original_func = func
+        wrapped.hypergen_render = cls._renderer_for(func)
+        return wrapped
+
+    @classmethod
+    def _action_wrap(
+        cls,
+        func: Callable[..., Any],
+        options: ActionOptions,
+    ) -> ActionCallable:
+        target_id, partial_base_template = options.resolve_rendering(func)
+
+        @wraps(func)
+        def _(*args, **kwargs):
+            request = flask_request
+            perm_check = check_perms(
+                request,
+                options.perm,
+                login_url=options.login_url,
+                raise_exception=options.raise_exception,
+                any_perm=options.any_perm,
+                redirect_field_name=options.redirect_field_name,
+            )
+            if not perm_check.ok:
+                if _is_redirect_response(perm_check.response):
+                    return callback_redirect_response(perm_check.response)
+                return perm_check.response or Response(status=403)
+            action_args = loads(request.form['hypergen_data'])['args']
+            template = cls._template_for(func, request, tuple(action_args), kwargs)
+            with c(
+                at='hypergen',
+                matched_perms=perm_check.matched_perms,
+                partial_base_template=partial_base_template,
+                liveview_resolver_match=liveview_resolver_match(for_action=True),
+                action_args=tuple(action_args),
+            ):
+                full = hypergen(
+                    template,
+                    settings={
+                        'action': True,
+                        'returns': FULL,
+                        'target_id': target_id,
+                        'appstate': options.appstate,
+                        'namespace': namespace_resolve(_),
+                        'base_view': options.base_view,
+                        'user_plugins': list(options.user_plugins),
+                    },
+                )
+                assert isinstance(full, HypergenResult)
+                if _is_redirect_response(full.template_result):
+                    return callback_redirect_response(full.template_result)
+                if isinstance(full.template_result, Response):
+                    return full.template_result
+                if type(full.template_result) is list:
+                    return json_commands_response(full.template_result)
+                return json_commands_response(full.context.hypergen.commands)
+
+        wrapped = cast(ActionCallable, _)
+        wrapped.original_func = func
+        wrapped.hypergen_render = cls._renderer_for(func)
+        return wrapped
+
+    @staticmethod
+    def _route_finalize(
+        router: Blueprint | Flask | None,
+        func: Callable[..., Any],
+        *,
+        kind: HypergenEndpointKind,
+        rule: str | None,
+        methods: Collection[str],
+        endpoint: str | None,
+        base_template: Callable[..., Any] | None,
+    ) -> RoutableCallable:
+        wrapped = route_register(
+            router,
+            cast(NamedCallable, func),
+            rule=rule,
+            methods=list(methods),
+            endpoint=endpoint,
+            base_template=base_template,
+        )
+        wrapped.hypergen_kind = kind
+        wrapped.is_hypergen_liveview = kind is HypergenEndpointKind.LIVEVIEW
+        wrapped.supports_hypergen_callback = kind is HypergenEndpointKind.ACTION
+        return wrapped
+
+    @classmethod
+    def hypergen_options_get(cls) -> LiveviewOptions | ActionOptions:
+        """Return this class's Hypergen behavior."""
+        if cls.hypergen_options is None:
+            raise TypeError(f'{cls.__name__}.hypergen_options must be configured')
+        return cls.hypergen_options
+
+    @classmethod
+    def view_func_create(
+        cls,
+        endpoint: str,
+        view_args: tuple[Any, ...],
+        view_kwargs: dict[str, Any],
+    ) -> Callable[..., Any]:
+        """Create the ordinary Flask class-view dispatcher."""
+        return cls.as_view(endpoint, *view_args, **view_kwargs)
+
+    @classmethod
+    def view_func_wrap(
+        cls,
+        view_func: Callable[..., Any],
+        options: LiveviewOptions | ActionOptions,
+    ) -> LiveviewCallable | ActionCallable:
+        """Apply the shared Hypergen runtime wrapper."""
+        view_func.is_hypergen_method_view = True
+        if isinstance(options, LiveviewOptions):
+            return cls._liveview_wrap(view_func, options)
+        return cls._action_wrap(view_func, options)
+
+    @classmethod
+    def route_methods_get(
+        cls,
+        view_func: Callable[..., Any],
+        options: LiveviewOptions | ActionOptions,
+        methods: Collection[str] | None,
+    ) -> Collection[str]:
+        """Resolve HTTP methods for route registration."""
+        if methods is not None:
+            return methods
+        if view_methods := getattr(view_func, 'methods', None):
+            resolved_methods = list(view_methods)
+            if (
+                isinstance(options, LiveviewOptions)
+                and options.partial
+                and 'POST' not in {method.upper() for method in resolved_methods}
+            ):
+                resolved_methods.append('POST')
+            return resolved_methods
+        if isinstance(options, LiveviewOptions):
+            return ['GET', 'POST'] if options.partial else ['GET']
+        return ['POST']
+
+    @classmethod
+    def reverse_source_get(
+        cls,
+        options: LiveviewOptions | ActionOptions,
+    ) -> Callable[..., Any] | None:
+        """Return the handler signature used for positional ``reverse()`` arguments."""
+        method_name = 'get' if isinstance(options, LiveviewOptions) else 'post'
+        return getattr(cls, method_name, None)
+
+    @classmethod
+    def base_renderer_create(
+        cls,
+        view_args: tuple[Any, ...],
+        view_kwargs: dict[str, Any],
+    ) -> Callable[..., Any]:
+        """Build the renderer actions use to refresh this liveview."""
+        shared_instance = None if cls.init_every_request else cls(*view_args, **view_kwargs)
+
+        def render(*args: Any, **kwargs: Any) -> Any:
+            instance = (
+                shared_instance if shared_instance is not None else cls(*view_args, **view_kwargs)
+            )
+            return instance.hypergen_render_base(*args, **kwargs)
+
+        return render
+
+    @classmethod
+    def register(
+        cls,
+        router: Blueprint | Flask,
+        rule: str,
+        *,
+        endpoint: str | None = None,
+        methods: Collection[str] | None = None,
+        options: LiveviewOptions | ActionOptions | None = None,
+        view_args: tuple[Any, ...] = (),
+        view_kwargs: dict[str, Any] | None = None,
+    ) -> RoutableCallable:
+        """Create, wrap, and register this class as a Hypergen route."""
+        endpoint = endpoint or cls.__name__
+        options = options or cls.hypergen_options_get()
+        view_kwargs = dict(view_kwargs or {})
+        view_func = cls.view_func_create(endpoint, view_args, view_kwargs)
+        wrapped = cls.view_func_wrap(view_func, options)
+        reverse_source = cls.reverse_source_get(options)
+        if reverse_source is not None:
+            wrapped.hypergen_reverse_source = reverse_source
+        if isinstance(options, LiveviewOptions):
+            wrapped.hypergen_render = cls.base_renderer_create(view_args, view_kwargs)
+            kind = HypergenEndpointKind.LIVEVIEW
+        else:
+            kind = HypergenEndpointKind.ACTION
+        return cls._route_finalize(
+            router,
+            wrapped,
+            kind=kind,
+            rule=rule,
+            methods=cls.route_methods_get(view_func, options, methods),
+            endpoint=endpoint,
+            base_template=options.base_template,
+        )
+
+    def hypergen_handler_get(self) -> Callable[..., Any]:
+        """Return the handler for the current HTTP request."""
+        is_partial_request = 'hypergen' in c and c.hypergen.get('partial_request', False)
+        method = 'get' if is_partial_request else flask_request.method.lower()
+        handler = getattr(self, method, None)
+        if handler is None and flask_request.method == 'HEAD':
+            handler = getattr(self, 'get', None)
+        if handler is None:
+            abort(405)
+        return handler
+
+    def dispatch_request(self, **kwargs: Any) -> Any:
+        """Dispatch URL and callback arguments to the selected method."""
+        handler = self.hypergen_handler_get()
+        callback_args: tuple[Any, ...] = ()
+        if 'hypergen' in c:
+            callback_args = tuple(c.hypergen.get('action_args', ()))
+        return current_app.ensure_sync(handler)(*callback_args, **kwargs)
+
+    def hypergen_render_base(self, *args: Any, **kwargs: Any) -> Any:
+        """Render this class's GET handler independently of the current method."""
+        handler = getattr(self, 'get', None)
+        if handler is None:
+            raise TypeError(f'{type(self).__name__} must define get() to be used as a base view')
+        return current_app.ensure_sync(handler)(*args, **kwargs)
 
 
 ENCODINGS = {

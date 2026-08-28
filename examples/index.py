@@ -51,6 +51,12 @@ EXAMPLES: tuple[ExampleCard, ...] = (
         'Liveview',
     ),
     ExampleCard(
+        'Class-Based Views',
+        'classviews.counter',
+        'Use HypergenMethodView classes for both a liveview page and its action.',
+        'Liveview',
+    ),
+    ExampleCard(
         'Inputs',
         'inputs.demo',
         'Read browser values, coerce input types, and render a summary.',

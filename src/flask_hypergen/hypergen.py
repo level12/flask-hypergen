@@ -219,8 +219,13 @@ def _reverse_factory(
     endpoint: str,
     base_template: object | None = None,
 ) -> ReverseCallable:
-    signature = inspect.signature(getattr(func, 'original_func', func))
-    param_names = [name for name in signature.parameters if name != 'request']
+    reverse_source = getattr(
+        func,
+        'hypergen_reverse_source',
+        getattr(func, 'original_func', func),
+    )
+    signature = inspect.signature(reverse_source)
+    param_names = [name for name in signature.parameters if name not in {'self', 'cls', 'request'}]
     func_name = getattr(func, '__name__', type(func).__name__)
 
     def reverse(*view_args: Any, **view_kwargs: Any) -> metastr:
