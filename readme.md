@@ -66,3 +66,7 @@ Versions are date based.  A `bump` action exists to help manage versions:
   # See other options
   mise bump -- --help
 ```
+
+### Coverage Notes
+
+See `docs/coverage-notes.md`.
