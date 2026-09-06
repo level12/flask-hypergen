@@ -20,16 +20,19 @@ Exceptions to the permission policies:
 - Ok: to make changes with uv that impact this project's venv ONLY
 - OK: changes to the databases defined in this app's docker compose
 
-# Conditional Instructions Index
+## Conditional Instructions Index
 
 1. At the start of every session, before responding to the first user prompt or doing any
-   task-related work, you MUST ALWAYS load the
-   [index file](https://raw.githubusercontent.com/rsyring/agent-configs/refs/heads/main/conditional-instructions.yaml)
-2. You MUST NOT load any linked documents from that index UNLESS that document's `when`
+   task-related work, you MUST ALWAYS look for the index file at
+   `~/projects/agent-configs/conditional-instructions-local.yaml` and load it if present.
+2. If the local index file is not present, load the remote
+   [index file](https://raw.githubusercontent.com/rsyring/agent-configs/refs/heads/main/conditional-instructions.yaml).
+3. You MUST NOT load any linked documents from the index UNLESS that document's `when`
    condition applies to the current task.
-3. If the index file cannot be fetched, stop and report that failure before answering the
+4. If neither index file can be loaded, stop and report that failure before answering the
    user substantively.
-4. WHEN you load a document from the index, notify the user.
+5. WHEN you load a document from the index, notify the user.
+
 
 # System Commands
 
