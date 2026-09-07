@@ -54,6 +54,28 @@ From zero to hero (passing tests that is):
    `nox`
 
 
+### JavaScript Runtime
+
+The readable Hypergen browser source lives in `src/flask_hypergen/static-src/`. The
+minified files in `src/flask_hypergen/static/` are generated package assets; do not edit
+them directly.
+
+Install the pinned Node and Aube toolchain through `mise`, then build or watch the
+runtime:
+
+```shell
+mise install
+mise run build-js
+mise run watch-js
+```
+
+Aube is the project's only JavaScript package installer and script runner. The generated
+bundle and source map remain committed so Python package users do not need JavaScript
+tooling. Watch mode produces development output directly in the static directory; run
+`mise run build-js` before committing or packaging to apply the production finalization.
+Prek automatically rebuilds and checks these assets when related files are committed.
+
+
 ### Versions
 
 Versions are date based. A `version` task shows and bumps versions:

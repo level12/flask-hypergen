@@ -216,11 +216,42 @@ required generated assets, and contributors no longer need to edit minified Java
 
 ## Implementation record
 
-Update this section while executing the spec with:
-
-- upstream commit copied
-- chosen pinned Node, Aube, and Parcel versions
-- dependency-script approvals and rationale, if any
-- source-map decision
-- validation commands and outcomes
-- any intentional deviations from the source baseline
+- **Upstream baseline:** Copied `hypergen.js` and `websocket.js` from
+  Django-Hypergen commit `3b8db56302b3f9f881103ca864b6a289cd10b754`, then applied
+  the repository's standard whitespace normalization without changing behavior.
+- **Pinned toolchain:** Node 24.20.0 LTS, Aube 1.32.0, and Parcel 2.9.3.
+- **Dependency graph:** Converted the upstream npm lock through Aube to preserve its
+  transitive versions, then removed the unused `mousetrap` dependency. The committed
+  project lock is Aube-native.
+- **Dependency builds:** `@swc/core`, `lmdb`, and `msgpackr-extract` were explicitly
+  reviewed and denied lifecycle scripts. Parcel builds successfully without them.
+  `strictDepBuilds` and the Aube build jail are enabled, with no dependency granted build
+  permission. Parcel's incompatible global virtual-store mode is disabled for this
+  project. Parcel autoinstall is disabled so missing build dependencies cannot bypass
+  Aube's frozen graph and lifecycle-script policy.
+- **Generated artifacts:** The production build commits both the bundle and its source
+  map. A small post-build task adds the generated-file header, removes Parcel 2.9.3's
+  duplicate source-map reference, and corrects the map's `file` field while preserving
+  line mappings.
+- **Baseline comparison:** Removing only the generated header and restoring Parcel's
+  duplicate map-reference line produces the exact original bundle SHA-256,
+  `851de78925e5579132b67e362c9b7fff69368af7fdf19075e652d4b89ef1d57d`.
+- **Reproducibility:** Two consecutive production builds produced identical bundle and
+  source-map hashes. A clean frozen Aube install and the artifact check pass under the
+  pinned Node 24.20.0 LTS runtime.
+- **Behavior validation:** 120 non-browser tests passed with one expected xfail. Both
+  Chromium end-to-end tests passed. A browser inspection confirmed the existing 30
+  `window.hypergen` exports and the three WebSocket exports initialize successfully.
+- **Distribution validation:** `uv build` produced both wheel and source distribution.
+  The wheel contains the generated bundle, source map, readable source, provenance
+  notice, the upstream MPL-2.0 license, and the morphdom and sockette MIT licenses. Both
+  generated assets are served successfully by the Flask static blueprint.
+- **Security audit:** `aube audit` reports 15 advisories in the frozen Parcel 2.9.3
+  dependency graph: 10 high and five moderate. Dependency tracing confirmed they are all
+  reachable only through the build-time Parcel dependency. Resolving those advisories
+  requires the dependency-upgrade work intentionally excluded from this
+  behavior-preserving migration.
+- **Automation:** `mise` exposes build, watch, local artifact-verification, and clean
+  reproducibility-check tasks. Prek runs the offline artifact check when related files
+  change. GitHub CI first performs a frozen Aube install and then runs the same check;
+  both fail on stale, missing, or untracked generated assets.

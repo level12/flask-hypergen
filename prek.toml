@@ -48,3 +48,9 @@ rev = "0.12.10"
 hooks = [
   { id = 'uv-lock' },
 ]
+
+[[repos]]
+repo = 'local'
+hooks = [
+  { id = 'verify-generated-javascript', name = 'verify generated javascript', entry = 'mise run verify-js', language = 'system', pass_filenames = false, files = '^(aube-lock\.yaml|aube-workspace\.yaml|mise\.lock|mise\.toml|package\.json|tasks/finalize-js-build\.mjs|src/flask_hypergen/static-src/.*\.js|src/flask_hypergen/static/hypergen\.js(\.map)?)$' },
+]

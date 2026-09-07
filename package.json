@@ -1,0 +1,24 @@
+{
+  "name": "flask-hypergen-client",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "aube@1.32.0",
+  "scripts": {
+    "build": "parcel build src/flask_hypergen/static-src/hypergen.js --dist-dir src/flask_hypergen/static --no-cache --no-autoinstall && node tasks/finalize-js-build.mjs",
+    "watch": "parcel watch src/flask_hypergen/static-src/hypergen.js --dist-dir src/flask_hypergen/static --no-autoinstall"
+  },
+  "dependencies": {
+    "morphdom": "2.6.1",
+    "sockette": "2.0.6"
+  },
+  "devDependencies": {
+    "parcel": "2.9.3"
+  },
+  "aube": {
+    "allowBuilds": {
+      "@swc/core": false,
+      "lmdb": false,
+      "msgpackr-extract": false
+    }
+  }
+}
