@@ -32,6 +32,7 @@ try:
 except ImportError:
     MiddlewareMixin = object  # Backwards compatibility.
 
+
 class ContextMiddleware(MiddlewareMixin):
     def process_request(self, request):
         context.replace(**_init_context(request))

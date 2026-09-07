@@ -551,12 +551,16 @@ def test_plugins():
             '    <head>',
             '        <!--hypergen_liveview_media-->',
             '        <script src="/flask_hypergen/static/hypergen.js"></script>',
-            '        <script type="application/json" id="hypergen-apply-commands-data">'
-            '{"_":["deque",[["hypergen.setClientState","hypergen.eventHandlerCallbacks",{}],'
-            '["history.replaceState",{"callback_url":"mock"},"","mock"]]]}</script>',
+            (
+                '        <script type="application/json" id="hypergen-apply-commands-data">'
+                '{"_":["deque",[["hypergen.setClientState","hypergen.eventHandlerCallbacks",{}],'
+                '["history.replaceState",{"callback_url":"mock"},"","mock"]]]}</script>'
+            ),
             '        <script>',
-            '                hypergen.ready(() => hypergen.applyCommands('
-            'JSON.parse(document.getElementById(',
+            (
+                '                hypergen.ready(() => hypergen.applyCommands('
+                'JSON.parse(document.getElementById('
+            ),
             "                    'hypergen-apply-commands-data').textContent, hypergen.reviver)))",
             '            </script>',
             '        <title>',
