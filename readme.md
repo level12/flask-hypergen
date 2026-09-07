@@ -1,4 +1,5 @@
 # flask-hypergen
+
 [![nox](https://github.com/level12/flask-hypergen/actions/workflows/nox.yaml/badge.svg)](https://github.com/level12/flask-hypergen/actions/workflows/nox.yaml)
 
 Flask integration for Hypergen, with a repo-root `examples/` app for local development.
@@ -21,8 +22,9 @@ Flask integration for Hypergen, with a repo-root `examples/` app for local devel
 
 ### Copier Template
 
-Project structure and tooling mostly derives from the [Coppy](https://github.com/level12/coppy),
-see its documentation for context and additional instructions.
+Project structure and tooling mostly derives from
+[Coppy](https://github.com/level12/coppy). See its documentation for context and
+additional instructions.
 
 This project can be updated from the upstream repo, see
 [Updating a Project](https://github.com/level12/coppy?tab=readme-ov-file#template-updates).
@@ -53,18 +55,18 @@ From zero to hero (passing tests that is):
 
 ### Versions
 
-Versions are date based.  A `bump` action exists to help manage versions:
+Versions are date based. A `version` task shows and bumps versions:
 
 ```shell
 
   # Show current version
-  mise bump --show
+  mise version show
 
   # Bump version based on date, tag, and push:
-  mise bump
+  mise version bump
 
   # See other options
-  mise bump -- --help
+  mise version -- --help
 ```
 
 ### Coverage Notes
