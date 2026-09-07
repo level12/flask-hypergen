@@ -4,7 +4,7 @@ from collections import UserList, defaultdict
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 import threading
-from typing import Any
+from typing import Any, TypeVar
 
 from flask import Flask, Request
 from flask import request as flask_request
@@ -91,6 +91,8 @@ class Context(threading.local):
 context = Context()
 c = context
 
+ResponseT = TypeVar('ResponseT')
+
 
 def user_resolve(request: Request) -> Any:
     user = getattr(request, 'user', None)
@@ -114,7 +116,7 @@ def context_values_build(request: Request) -> dict[str, Any]:
     return values
 
 
-def context_middleware[ResponseT](
+def context_middleware(
     get_response: Callable[[Request], ResponseT],
 ) -> Callable[[Request], ResponseT]:
     def middleware(request: Request) -> ResponseT:
