@@ -6,6 +6,7 @@ from flask import Blueprint
 from sqlalchemy import create_engine
 from sqlalchemy import select as sa_select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy.pool import NullPool
 
 from examples.common import make_base_template
 from flask_hypergen import NO_PERM_REQUIRED, action, callback, liveview
@@ -26,7 +27,9 @@ class CounterState(Base):
 def make_blueprint(database_url: str) -> Blueprint:
     bp = Blueprint('sqlalchemy_counter', __name__, url_prefix='/sqlalchemy-counter')
     base_template = make_base_template('SQLAlchemy Counter')
-    engine = create_engine(database_url, future=True)
+    # Tests create many short-lived example apps, so do not retain SQLite connections in a pool
+    # after their sessions close and leave them for garbage collection.
+    engine = create_engine(database_url, future=True, poolclass=NullPool)
     Base.metadata.create_all(engine)
     with Session(engine) as session:
         state = session.get(CounterState, 1)
