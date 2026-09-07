@@ -52,5 +52,5 @@ hooks = [
 [[repos]]
 repo = 'local'
 hooks = [
-  { id = 'verify-generated-javascript', name = 'verify generated javascript', entry = 'mise run verify-js', language = 'system', pass_filenames = false, files = '^(aube-lock\.yaml|aube-workspace\.yaml|mise\.lock|mise\.toml|package\.json|tasks/finalize-js-build\.mjs|src/flask_hypergen/static-src/.*\.js|src/flask_hypergen/static/hypergen\.js(\.map)?)$' },
+  { id = 'verify-generated-javascript', name = 'verify generated javascript', entry = 'tasks/js-verify', language = 'system', pass_filenames = false, files = '^(aube-lock\.yaml|aube-workspace\.yaml|mise\.lock|mise\.toml|package\.json|tasks/(finalize-js-build\.mjs|js-(build|check|verify|watch))|src/flask_hypergen/static-src/.*\.js|src/flask_hypergen/static/hypergen\.js(\.map)?)$' },
 ]

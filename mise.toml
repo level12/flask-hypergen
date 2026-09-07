@@ -3,7 +3,7 @@ enter = "uv sync"
 
 
 [tools]
-aube = '1.32.0'
+aube = '1.33.1'
 node = '24.20.0'
 rumdl = 'latest'
 
@@ -31,37 +31,6 @@ description = 'Full pytest run with html coverage report'
 # But coverage only looks for the rc file in the CWD, so start in proj root.
 dir = "{{ config_root }}"
 run = 'pytest --cov --cov-report=html --no-cov-on-fail'
-
-
-[tasks.build-js]
-description = 'Build the packaged Hypergen browser runtime'
-dir = "{{ config_root }}"
-run = 'aube run build'
-
-
-[tasks.watch-js]
-description = 'Watch Hypergen JavaScript source and rebuild the packaged runtime'
-dir = "{{ config_root }}"
-run = 'aube run watch'
-
-
-[tasks.verify-js]
-description = 'Rebuild JavaScript and verify the committed assets are current'
-dir = "{{ config_root }}"
-run = [
-    'aube run --no-install build',
-    'git ls-files --error-unmatch -- src/flask_hypergen/static/hypergen.js src/flask_hypergen/static/hypergen.js.map',
-    'git diff --exit-code -- src/flask_hypergen/static/hypergen.js src/flask_hypergen/static/hypergen.js.map',
-]
-
-
-[tasks.check-js]
-description = 'Verify the frozen JavaScript build is reproducible'
-dir = "{{ config_root }}"
-run = [
-    'aube ci',
-    'mise run verify-js',
-]
 
 
 [tasks.upgrade-deps]

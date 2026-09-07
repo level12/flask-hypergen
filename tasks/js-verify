@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# [MISE] description="Rebuild JavaScript and verify the committed assets are current"
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+aube run --no-install build
+git ls-files --error-unmatch -- \
+    src/flask_hypergen/static/hypergen.js \
+    src/flask_hypergen/static/hypergen.js.map
+git diff --exit-code -- \
+    src/flask_hypergen/static/hypergen.js \
+    src/flask_hypergen/static/hypergen.js.map

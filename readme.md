@@ -65,15 +65,18 @@ runtime:
 
 ```shell
 mise install
-mise run build-js
-mise run watch-js
+mise run js-build
+mise run js-watch
 ```
 
 Aube is the project's only JavaScript package installer and script runner. The generated
 bundle and source map remain committed so Python package users do not need JavaScript
 tooling. Watch mode produces development output directly in the static directory; run
-`mise run build-js` before committing or packaging to apply the production finalization.
-Prek automatically rebuilds and checks these assets when related files are committed.
+`mise run js-build` before committing or packaging to apply the production finalization.
+The JavaScript tasks are executable scripts in `tasks/`, so `tasks/js-build`,
+`tasks/js-watch`, `tasks/js-verify`, and `tasks/js-check` can also be called without Mise
+when the pinned Node and Aube tools are already on `PATH`. Prek automatically rebuilds and
+checks these assets when related files are committed.
 
 
 ### Versions

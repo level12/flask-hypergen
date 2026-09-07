@@ -9,7 +9,7 @@ const sourceMapPath = new URL(
   import.meta.url,
 )
 const generatedHeader =
-  '/*! @generated from src/flask_hypergen/static-src; run mise run build-js. */\n'
+  '/*! @generated from src/flask_hypergen/static-src; run tasks/js-build. */\n'
 const sourceMapReference = '//# sourceMappingURL=hypergen.js.map'
 
 let bundle = await readFile(bundlePath, 'utf8')

@@ -2,7 +2,7 @@
   "name": "flask-hypergen-client",
   "private": true,
   "version": "0.0.0",
-  "packageManager": "aube@1.32.0",
+  "packageManager": "aube@1.33.1",
   "scripts": {
     "build": "parcel build src/flask_hypergen/static-src/hypergen.js --dist-dir src/flask_hypergen/static --no-cache --no-autoinstall && node tasks/finalize-js-build.mjs",
     "watch": "parcel watch src/flask_hypergen/static-src/hypergen.js --dist-dir src/flask_hypergen/static --no-autoinstall"

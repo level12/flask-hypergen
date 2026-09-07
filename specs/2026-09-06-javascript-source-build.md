@@ -34,7 +34,7 @@ The repository should:
 - use Aube, never npm, to install JavaScript dependencies and run package scripts
 - generate the existing packaged `hypergen.js` asset from that source
 - keep the generated asset committed and included in Python distributions
-- provide straightforward build and watch workflows through `mise`
+- provide directly executable JavaScript tasks, with convenient aliases through `mise`
 - make stale generated assets detectable in automated validation
 
 
@@ -126,11 +126,15 @@ exotic transitive dependencies and trust downgrades.
 
 ## Build behavior
 
-Provide project scripts and `mise` tasks for:
+Provide executable project tasks, automatically exposed through `mise`, for:
 
 - a production build that writes the packaged bundle and source map
 - a development watch build for client work
 - a frozen clean install/build suitable for CI
+
+Name the JavaScript tasks with a consistent `js-` prefix: `js-build`, `js-watch`,
+`js-verify`, and `js-check`. CI and Prek should call the executable tasks directly so
+they do not require the Mise CLI after their required JavaScript tools are provisioned.
 
 The production build must have deterministic output for a fixed source, toolchain,
 configuration, and lockfile. Running it twice should not change tracked files after the
@@ -219,7 +223,7 @@ required generated assets, and contributors no longer need to edit minified Java
 - **Upstream baseline:** Copied `hypergen.js` and `websocket.js` from
   Django-Hypergen commit `3b8db56302b3f9f881103ca864b6a289cd10b754`, then applied
   the repository's standard whitespace normalization without changing behavior.
-- **Pinned toolchain:** Node 24.20.0 LTS, Aube 1.32.0, and Parcel 2.9.3.
+- **Pinned toolchain:** Node 24.20.0 LTS, Aube 1.33.1, and Parcel 2.9.3.
 - **Dependency graph:** Converted the upstream npm lock through Aube to preserve its
   transitive versions, then removed the unused `mousetrap` dependency. The committed
   project lock is Aube-native.
@@ -251,7 +255,9 @@ required generated assets, and contributors no longer need to edit minified Java
   reachable only through the build-time Parcel dependency. Resolving those advisories
   requires the dependency-upgrade work intentionally excluded from this
   behavior-preserving migration.
-- **Automation:** `mise` exposes build, watch, local artifact-verification, and clean
-  reproducibility-check tasks. Prek runs the offline artifact check when related files
-  change. GitHub CI first performs a frozen Aube install and then runs the same check;
-  both fail on stale, missing, or untracked generated assets.
+- **Automation:** Executable `js-build`, `js-watch`, `js-verify`, and `js-check` tasks are
+  the canonical automation and are also discovered by `mise`. Prek invokes `js-verify`
+  directly when related files change. The Python-only Prek CI job skips that hook because
+  it does not provision the JavaScript toolchain; the dedicated JavaScript job installs
+  only the Node and Aube versions selected by `mise.toml`, then invokes `js-check`
+  directly. The dedicated job fails on stale, missing, or untracked generated assets.

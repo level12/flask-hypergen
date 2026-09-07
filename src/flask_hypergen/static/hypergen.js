@@ -1,4 +1,4 @@
-/*! @generated from src/flask_hypergen/static-src; run mise run build-js. */
+/*! @generated from src/flask_hypergen/static-src; run tasks/js-build. */
 (()=>{function e(e,t,n,o){Object.defineProperty(e,t,{get:n,set:o,enumerable:!0,configurable:!0})}var t,n,o={};e(o,"morph",()=>b),e(o,"remove",()=>w),e(o,"hide",()=>N),e(o,"display",()=>C),e(o,"visible",()=>T),e(o,"hidden",()=>S),e(o,"redirect",()=>A),e(o,"append",()=>I),e(o,"prepend",()=>k),e(o,"setClientState",()=>O),e(o,"intervalSet",()=>R),e(o,"applyCommands",()=>z),e(o,"intervalClear",()=>B),e(o,"addEventListener",()=>x),e(o,"callback",()=>W),e(o,"keypressToCallback",()=>H),e(o,"keypressToCallbackRemove",()=>P),e(o,"throttle",()=>V),e(o,"partialLoad",()=>X),e(o,"onpushstate",()=>ea),e(o,"cancelThrottle",()=>G),e(o,"event",()=>K),e(o,"coerce",()=>Z),e(o,"read",()=>ee),e(o,"when",()=>et),e(o,"element",()=>en),e(o,"reviver",()=>eo),e(o,"ready",()=>ed);var r="undefined"==typeof document?void 0:document,l=!!r&&"content"in r.createElement("template"),i=!!r&&r.createRange&&"createContextualFragment"in r.createRange();/**
  * Returns true if two node's names are the same.
  *
