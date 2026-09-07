@@ -50,7 +50,7 @@ description = 'Upgrade uv and prek dependencies'
 dir = "{{ config_root }}"
 run = [
     'uv sync --upgrade',
-    'prek auto-update',
+    'prek update',
 ]
 
 [tasks.examples-run]
