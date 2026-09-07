@@ -134,11 +134,11 @@ def test_liveview_partial_get_returns_json_commands(client):
     assert 'hypergen.morph' in response.get_data(as_text=True)
 
 
-def test_partialload_links_enable_partial_navigation(client):
+def test_partial_links_enable_get_navigation(client):
     response = client.get('/partialload/page1')
     body = response.get_data(as_text=True)
     assert response.status_code == 200
-    assert 'hypergen.partialLoad' in body
+    assert 'hypergen.navigate' in body
     assert 'Current page: page1' in body
 
 

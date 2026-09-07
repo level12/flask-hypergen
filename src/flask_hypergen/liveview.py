@@ -60,6 +60,8 @@ __all__ = sorted(
         'dumps',
         'encoder',
         'init_app',
+        'hypergen_partial_response',
+        'is_hypergen_partial_request',
         'json_commands_response',
         'liveview',
         'loads',
@@ -120,6 +122,10 @@ def _request_header(request: Any, key: str) -> Any:
         return meta[env_key]
     environ = getattr(request, 'environ', {})
     return environ.get(env_key)
+
+
+def is_hypergen_partial_request(request: Any) -> bool:
+    return _request_header(request, 'X-Hypergen-Partial') == '1'
 
 
 def _request_path(request: Any) -> str:
@@ -250,7 +256,7 @@ class LiveviewPluginBase:
                 if base_template1 is not None:
                     base_template2 = c.hypergen.get('partial_base_template')
                     if base_template2 is not None and compare_funcs(base_template1, base_template2):
-                        attrs['onclick'] = f"hypergen.partialLoad(event, '{href}', true)"
+                        attrs['onclick'] = "hypergen.navigate(event, this.href, 'push')"
         yield
 
 
@@ -297,6 +303,13 @@ class LiveviewPlugin(LiveviewPluginBase):
                 '<html><head>' + _hypergen_html(template) + '</head>',
             )
         return _hypergen_html(template) + html_output
+
+
+class _PartialUpdatePlugin(LiveviewPluginBase):
+    @contextmanager
+    def context(self):
+        with c(at='hypergen', event_handler_callbacks={}, commands=deque()):
+            yield
 
 
 class ActionPlugin(LiveviewPluginBase):
@@ -470,6 +483,59 @@ def json_commands_response(commands: Any, status: int = 200) -> Response:
     return Response(dumps(commands), status=status, mimetype='application/json')
 
 
+def hypergen_partial_response(
+    func: Callable[..., Any],
+    *args: Any,
+    base_template: Callable[..., Any] | None = None,
+    target_id: str | None = None,
+    settings: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> Response:
+    settings_data = dict(settings or {})
+    settings_data.update(
+        {
+            'base_template': base_template,
+            'render_mode': 'partial-update',
+            'returns': FULL,
+            'target_id': target_id,
+        },
+    )
+    result = hypergen(func, *args, settings=settings_data, **kwargs)
+    assert isinstance(result, HypergenResult)
+    if _is_redirect_response(result.template_result):
+        return callback_redirect_response(result.template_result)
+    if isinstance(result.template_result, Response):
+        return result.template_result
+
+    updates = [
+        {'region': update.region_name, 'swap': update.swap, 'html': update.html}
+        for update in result.region_updates
+    ]
+    main_update = (
+        {
+            'target': target_id,
+            'swap': 'inner-morph',
+            'html': result.html,
+        }
+        if target_id is not None and updates
+        else None
+    )
+    legacy_callback_target = target_id if main_update is None else None
+    commands: list[list[Any]] = [
+        [
+            'hypergen.applyUpdates',
+            updates,
+            result.context.hypergen.event_handler_callbacks,
+            main_update,
+            legacy_callback_target,
+        ],
+    ]
+    if legacy_callback_target is not None:
+        commands.append(['hypergen.morph', target_id, result.html])
+    commands.extend(result.context.hypergen.commands)
+    return json_commands_response(commands)
+
+
 def _is_redirect_response(response: object) -> TypeGuard[Response]:
     return bool(
         isinstance(response, Response) and 300 <= response.status_code < 400 and response.location,
@@ -498,8 +564,6 @@ def liveview(
         assert perm, 'perm is a required keyword argument'
     if target_id is None:
         target_id = getattr(base_template, 'target_id', None)
-    if base_template and partial and not target_id:
-        raise Exception(f'{func}: Partial loading requires a target_id.')
     partial_base_template = base_template if partial else None
     original_func = func
     user_plugins = user_plugins or []
@@ -524,25 +588,19 @@ def liveview(
                 partial_base_template=partial_base_template,
                 liveview_resolver_match=liveview_resolver_match(),
             ):
-                full = hypergen(
+                return hypergen_partial_response(
                     func,
                     request,
                     *args,
-                    **kwargs,
+                    base_template=base_template,
+                    target_id=target_id,
                     settings={
-                        'action': True,
-                        'returns': FULL,
-                        'target_id': target_id,
                         'appstate': appstate,
                         'namespace': namespace_resolve(_),
-                        'prepend_commands': False,
                         'user_plugins': user_plugins,
                     },
+                    **kwargs,
                 )
-                assert isinstance(full, HypergenResult)
-                if _is_redirect_response(full.template_result):
-                    return callback_redirect_response(full.template_result)
-                return json_commands_response(full.context.hypergen.commands)
         with c(
             at='hypergen',
             matched_perms=perm_check.matched_perms,

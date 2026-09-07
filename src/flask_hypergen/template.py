@@ -116,6 +116,7 @@ class HypergenSettings:
     plugins: list[object] = field(default_factory=list)
     liveview: bool = False
     action: bool = False
+    render_mode: Literal['document', 'partial-update'] = 'document'
     returns: str = HTML
     indent: bool = False
     base_template: Callable[..., Any] | None = None
@@ -128,10 +129,18 @@ class HypergenSettings:
 
 
 @dataclass(frozen=True)
+class RegionUpdate:
+    region_name: str
+    html: str
+    swap: str = 'inner-morph'
+
+
+@dataclass(frozen=True)
 class HypergenResult:
     html: str
     context: Context
     template_result: object
+    region_updates: tuple[RegionUpdate, ...] = ()
 
     @overload
     def __getitem__(self, key: Literal['html']) -> str: ...
@@ -142,7 +151,10 @@ class HypergenResult:
     @overload
     def __getitem__(self, key: Literal['template_result']) -> object: ...
 
-    def __getitem__(self, key: str) -> str | Context | object:
+    @overload
+    def __getitem__(self, key: Literal['region_updates']) -> tuple[RegionUpdate, ...]: ...
+
+    def __getitem__(self, key: str) -> str | Context | object | tuple[RegionUpdate, ...]:
         return getattr(self, key)
 
 
@@ -152,6 +164,7 @@ def settings_load(settings: dict[str, Any] | None) -> HypergenSettings:
         plugins=list(data.get('plugins', [])),
         liveview=bool(data.get('liveview', False)),
         action=bool(data.get('action', False)),
+        render_mode=data.get('render_mode', 'document'),
         returns=data.get('returns', HTML),
         indent=bool(data.get('indent', False)),
         base_template=data.get('base_template'),
@@ -182,6 +195,10 @@ def plugins_build(settings: HypergenSettings) -> list[object]:
                 prepend_commands=settings.prepend_commands,
             ),
         )
+    if settings.render_mode == 'partial-update':
+        from flask_hypergen.liveview import _PartialUpdatePlugin
+
+        plugins.append(_PartialUpdatePlugin())
     if settings.appstate is not None:
         namespace = getattr(settings.appstate, 'namespace', settings.namespace)
         assert namespace, 'When appstate is set, namespace must be too.'
@@ -203,25 +220,62 @@ def hypergen(
 ) -> str | deque[Any] | HypergenResult:
     assert 'request' in c, "The 'flask_hypergen.context.context_init_app' hook must be installed!"
     settings = settings_load(kwargs.pop('settings', None))
+    if settings.render_mode not in ('document', 'partial-update'):
+        raise ValueError(f'Unsupported render mode: {settings.render_mode}')
     plugins = plugins_build(settings)
     returns = settings.returns
     assert returns in HYPERGEN_RETURNS, (
         f"The 'returns' hypergen setting must be one of {HYPERGEN_RETURNS!r}"
     )
     with (
-        c(at='hypergen', plugins=plugins, base_template=settings.base_template),
+        c(
+            at='hypergen',
+            plugins=plugins,
+            base_template=settings.base_template,
+            render_mode=settings.render_mode,
+            region_names=set(),
+            region_updates=[],
+            active_region=None,
+        ),
         plugins_exit_stack(
             'context',
         ),
     ):
         plugins_method_call('template_before')
-        template_func = settings.base_template()(template) if settings.base_template else template
+        template_for_render = template
+        if settings.render_mode == 'partial-update' and settings.target_id is not None:
+
+            @wraps(template)
+            def main_target_template(*template_args: Any, **template_kwargs: Any) -> Any:
+                with c(at='hypergen', target_id=settings.target_id):
+                    return template(*template_args, **template_kwargs)
+
+            template_for_render = main_target_template
+
+        template_func = (
+            settings.base_template()(template_for_render)
+            if settings.base_template
+            else template_for_render
+        )
         template_result = template_func(
             *args,
             **kwargs,
         )
         plugins_method_call('template_after', template_result=template_result)
         html = join_html(c.hypergen.into) if 'into' in c.hypergen else ''
+        if settings.render_mode == 'partial-update':
+            if settings.target_id is not None:
+                html = join_html(c.hypergen.into.contexts[settings.target_id])
+            else:
+                html = ''
+            if (
+                settings.target_id is None
+                and not c.hypergen.region_updates
+                and not isinstance(template_result, Response)
+            ):
+                raise ValueError(
+                    'Partial-update rendering requires a main target or at least one region.',
+                )
         html = plugins_pipeline('process_html', html)
         if settings.indent:
             html = html_indent(html)
@@ -229,7 +283,12 @@ def hypergen(
             return html
         if returns == COMMANDS:
             return c.hypergen.commands
-        return HypergenResult(html=html, context=c.clone(), template_result=template_result)
+        return HypergenResult(
+            html=html,
+            context=c.clone(),
+            template_result=template_result,
+            region_updates=tuple(c.hypergen.region_updates),
+        )
 
 
 def hypergen_to_response(func: Callable[..., Any], *args: Any, **kwargs: Any) -> Response:
@@ -1025,6 +1084,39 @@ class wbr(base_element_void):
     pass
 
 
+@contextmanager
+def region(
+    name: str,
+    *,
+    tag: type[base_element] | None = None,
+    swap: str = 'inner-morph',
+) -> Iterator[None]:
+    if not name:
+        raise ValueError('Region name must not be empty.')
+    if swap != 'inner-morph':
+        raise ValueError(f'Unsupported region swap: {swap}')
+    if c.hypergen.active_region is not None:
+        raise ValueError('Regions must not be nested.')
+    if name in c.hypergen.region_names:
+        raise ValueError(f'Duplicate region name: {name}')
+
+    c.hypergen.region_names.add(name)
+    boundary_tag = tag or div
+    attrs = {'data_hypergen_region': name}
+    if tag is None:
+        attrs['style'] = 'display: contents'
+
+    if c.hypergen.render_mode == 'partial-update':
+        into: list[Any] = []
+        with c(at='hypergen', active_region=name, into=into), boundary_tag(**attrs):
+            yield
+        c.hypergen.region_updates.append(RegionUpdate(name, join_html(into), swap))
+        return
+
+    with c(at='hypergen', active_region=name), boundary_tag(**attrs):
+        yield
+
+
 def doctype(type_: str = 'html') -> None:
     raw('<!DOCTYPE ', type_, '>')
 
@@ -1160,6 +1252,7 @@ __all__ = [
     'HypergenSettings',
     'HYPERGEN_RETURNS',
     'OMIT',
+    'RegionUpdate',
     'TemplatePlugin',
     'a',
     'add_class',
@@ -1176,6 +1269,7 @@ __all__ = [
     'on_url',
     'plugins_build',
     'raw',
+    'region',
     'settings_load',
     'script',
     'style',

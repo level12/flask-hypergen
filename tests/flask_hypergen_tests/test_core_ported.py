@@ -1013,7 +1013,7 @@ def test_wrap_element_init_select_multiple_unsupported_coerce():
             pass
 
 
-def test_wrap_element_init_a_partial_load():
+def test_wrap_element_init_a_partial_navigation():
     base_template = make_base_template('one')
     href = metastr.make('/x/', {'base_template': base_template})
     ctx = hypergen_context()
@@ -1023,7 +1023,7 @@ def test_wrap_element_init_a_partial_load():
         attrs = {'href': href}
         with LiveviewPluginBase().wrap_element_init(element, [], attrs):
             pass
-        assert attrs['onclick'] == f"hypergen.partialLoad(event, '{href}', true)"
+        assert attrs['onclick'] == "hypergen.navigate(event, this.href, 'push')"
 
 
 def test_url_is_active_on_url_and_a_class_active():
@@ -1088,12 +1088,42 @@ def test_liveview_resolver_match_edges():
     assert liveview_resolver_match(for_action=True) is None
 
 
-def test_liveview_partial_requires_target_id():
-    def base(view):
-        return view
+def test_liveview_partial_can_use_regions_without_target_id():
+    from flask import Flask
 
-    with pytest.raises(Exception, match='requires a target_id'):
-        liveview(base_template=base, perm=NO_PERM_REQUIRED)(lambda request: None)
+    from flask_hypergen import init_app, region
+
+    app = Flask(__name__)
+    app.config['SECRET_KEY'] = 'x'
+    init_app(app)
+
+    @contextmanager
+    def base_template():
+        with region('navigation'):
+            p('Navigation')
+        with region('page-content'):
+            yield
+
+    def view(request):
+        p('Region content')
+
+    liveview(
+        app,
+        rule='/region-liveview/',
+        base_template=base_template,
+        perm=NO_PERM_REQUIRED,
+    )(view)
+
+    response = app.test_client().get(
+        '/region-liveview/',
+        headers={'X-Hypergen-Partial': '1'},
+    )
+    commands = loads(response.get_data(as_text=True))
+    updates = next(command[1] for command in commands if command[0] == 'hypergen.applyUpdates')
+
+    assert response.status_code == 200
+    assert [update['region'] for update in updates] == ['navigation', 'page-content']
+    assert 'Region content' in updates[1]['html']
 
 
 def test_action_partial_requires_target_id():

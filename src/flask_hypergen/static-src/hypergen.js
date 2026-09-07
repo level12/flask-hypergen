@@ -15,7 +15,7 @@ if (typeof Array.isArray === 'undefined') {
 }
 
 // Commands that can be called from the backend.
-export const morph = function(id, html) {
+export const morph = function(id, html, autofocus=true) {
   const element = document.getElementById(id)
   if (!element) {
     console.error("Trying to morph into an element with id='" + id + "' that does not exist. Please check your target_id.")
@@ -23,7 +23,7 @@ export const morph = function(id, html) {
   }
   morphdom(
     element,
-    "<div>" + html + "</div>",
+    typeof html === "string" ? "<div>" + html + "</div>" : html,
     {
       childrenOnly: true,
       onBeforeElUpdated: function(fromEl, toEl) {
@@ -61,8 +61,10 @@ export const morph = function(id, html) {
     }
   )
 
-  const autofocus = document.querySelectorAll('[autofocus]')[0]
-  if (autofocus !== undefined) autofocus.focus()
+  if (autofocus) {
+    const autofocusElement = document.querySelectorAll('[autofocus]')[0]
+    if (autofocusElement !== undefined) autofocusElement.focus()
+  }
 }
 
 export const remove = function(id) {
@@ -390,6 +392,310 @@ const mergeAttrs = function(target, source){
   })
 }
 
+const callbackIdsIn = function(boundary) {
+  const ids = new Set()
+  const elements = [boundary, ...boundary.querySelectorAll('*')]
+  const pattern = /hypergen\.event\s*\(\s*event\s*,\s*(['"])(.*?)\1/g
+
+  for (const element of elements) {
+    for (const attribute of element.attributes) {
+      pattern.lastIndex = 0
+      for (
+        let match = pattern.exec(attribute.value);
+        match;
+        match = pattern.exec(attribute.value)
+      ) {
+        ids.add(match[2])
+      }
+    }
+  }
+  return ids
+}
+
+const parseBoundary = function(update, existing) {
+  const range = document.createRange()
+  range.selectNode(existing)
+  const fragment = range.createContextualFragment(update.html)
+  const elements = [...fragment.children]
+  const nonWhitespaceText = [...fragment.childNodes].some(
+    node => node.nodeType === Node.TEXT_NODE && node.textContent.trim() !== '',
+  )
+  const boundaries = fragment.querySelectorAll('[data-hypergen-region]')
+
+  if (
+    elements.length !== 1 ||
+    nonWhitespaceText ||
+    boundaries.length !== 1 ||
+    !elements[0].hasAttribute('data-hypergen-region')
+  ) {
+    throw new Error(
+      `Returned update for region "${update.region}" must contain exactly one region boundary.`,
+    )
+  }
+
+  const returned = elements[0]
+  const returnedName = returned.getAttribute('data-hypergen-region')
+  if (returnedName !== update.region) {
+    throw new Error(
+      `Returned region "${returnedName}" does not match update "${update.region}".`,
+    )
+  }
+  if (returned.localName !== existing.localName) {
+    throw new Error(
+      `Returned region "${update.region}" must use <${existing.localName}>, not <${returned.localName}>.`,
+    )
+  }
+  // Keep scripts inert until morphdom's existing onNodeAdded hook executes them once.
+  // Parsing their children again on the boundary itself preserves restricted contexts.
+  returned.innerHTML = returned.innerHTML
+  return returned
+}
+
+const parseMainUpdate = function(update, existing) {
+  if (update.swap !== 'inner-morph') {
+    throw new Error(`Unsupported main target swap: ${update.swap}`)
+  }
+  const range = document.createRange()
+  range.selectNode(existing)
+  const returned = existing.cloneNode(false)
+  const fragment = range.createContextualFragment(update.html)
+  returned.appendChild(fragment)
+  returned.innerHTML = returned.innerHTML
+  return returned
+}
+
+let temporaryRegionId = 0
+
+const morphBoundary = function(existing, returned) {
+  const hadId = existing.hasAttribute('id')
+  const originalId = existing.getAttribute('id')
+  let id = originalId
+  if (!id || document.getElementById(id) !== existing) {
+    do {
+      temporaryRegionId += 1
+      id = `hypergen-region-update-${temporaryRegionId}`
+    } while (document.getElementById(id))
+    existing.setAttribute('id', id)
+  }
+
+  try {
+    morph(id, returned, false)
+  } finally {
+    if (hadId) {
+      existing.setAttribute('id', originalId)
+    } else {
+      existing.removeAttribute('id')
+    }
+  }
+}
+
+export const applyUpdates = function(
+  updates,
+  eventHandlerCallbacks=null,
+  mainUpdate=null,
+  callbackTargetId=null,
+) {
+  const existingByName = new Map()
+  for (const boundary of document.querySelectorAll('[data-hypergen-region]')) {
+    const name = boundary.getAttribute('data-hypergen-region')
+    const matches = existingByName.get(name) || []
+    matches.push(boundary)
+    existingByName.set(name, matches)
+  }
+
+  const requested = new Set()
+  const prepared = updates.map(update => {
+    const matches = existingByName.get(update.region) || []
+    if (matches.length !== 1) {
+      throw new Error(`Hypergen region "${update.region}" must exist exactly once.`)
+    }
+    if (requested.has(update.region)) {
+      throw new Error(`Hypergen region "${update.region}" may only be updated once per batch.`)
+    }
+    requested.add(update.region)
+    if (update.swap !== 'inner-morph') {
+      throw new Error(`Unsupported region swap: ${update.swap}`)
+    }
+    return {
+      existing: matches[0],
+      returned: parseBoundary(update, matches[0]),
+      update,
+    }
+  })
+
+  let preparedMain = null
+  if (mainUpdate) {
+    const matches = [...document.querySelectorAll('[id]')].filter(
+      element => element.getAttribute('id') === mainUpdate.target,
+    )
+    if (matches.length !== 1) {
+      throw new Error(
+        `Hypergen main target "${mainUpdate.target}" must exist exactly once.`,
+      )
+    }
+    preparedMain = {
+      existing: matches[0],
+      returned: parseMainUpdate(mainUpdate, matches[0]),
+      update: mainUpdate,
+    }
+  }
+
+  const preparedTargets = prepared.map(item => ({
+    existing: item.existing,
+    label: item.update.region,
+  }))
+  if (preparedMain) {
+    preparedTargets.push({
+      existing: preparedMain.existing,
+      label: `main target ${preparedMain.update.target}`,
+    })
+  }
+  for (let i = 0; i < preparedTargets.length; i += 1) {
+    for (let j = i + 1; j < preparedTargets.length; j += 1) {
+      const first = preparedTargets[i]
+      const second = preparedTargets[j]
+      let ancestor = null
+      let descendant = null
+      if (first.existing.contains(second.existing)) {
+        ancestor = first
+        descendant = second
+      } else if (second.existing.contains(first.existing)) {
+        ancestor = second
+        descendant = first
+      }
+      if (ancestor) {
+        throw new Error(
+          `Hypergen update targets "${ancestor.label}" and "${descendant.label}" ` +
+            'must not overlap.',
+        )
+      }
+    }
+  }
+
+  document.dispatchEvent(
+    new CustomEvent('hypergen.applyUpdates.before', {detail: {updates, mainUpdate}}),
+  )
+
+  const clientState = hypergen.clientState
+  if (!clientState.hypergen) clientState.hypergen = {}
+  if (!clientState.hypergen.eventHandlerCallbacks) {
+    clientState.hypergen.eventHandlerCallbacks = {}
+  }
+  const callbacks = clientState.hypergen.eventHandlerCallbacks
+  const callbackBoundaries = prepared.map(item => item.existing)
+  if (preparedMain) callbackBoundaries.push(preparedMain.existing)
+  if (callbackTargetId) {
+    const callbackTarget = document.getElementById(callbackTargetId)
+    if (callbackTarget) callbackBoundaries.push(callbackTarget)
+  }
+  for (const boundary of callbackBoundaries) {
+    for (const callbackId of callbackIdsIn(boundary)) delete callbacks[callbackId]
+  }
+  if (eventHandlerCallbacks) Object.assign(callbacks, eventHandlerCallbacks)
+
+  for (const {existing, returned, update} of prepared) {
+    document.dispatchEvent(
+      new CustomEvent('hypergen.applyUpdate.before', {detail: {update, boundary: existing}}),
+    )
+    morphBoundary(existing, returned)
+    document.dispatchEvent(
+      new CustomEvent('hypergen.applyUpdate.after', {detail: {update, boundary: existing}}),
+    )
+  }
+
+  if (preparedMain) {
+    document.dispatchEvent(
+      new CustomEvent('hypergen.applyUpdate.before', {
+        detail: {update: preparedMain.update, boundary: preparedMain.existing},
+      }),
+    )
+    morphBoundary(preparedMain.existing, preparedMain.returned)
+    document.dispatchEvent(
+      new CustomEvent('hypergen.applyUpdate.after', {
+        detail: {update: preparedMain.update, boundary: preparedMain.existing},
+      }),
+    )
+  }
+
+  if (prepared.length || preparedMain) {
+    const autofocus = document.querySelector('[autofocus]')
+    if (autofocus) autofocus.focus()
+  }
+  document.dispatchEvent(
+    new CustomEvent('hypergen.applyUpdates.after', {detail: {updates, mainUpdate}}),
+  )
+}
+
+const navigationState = function(url) {
+  return {hypergen_url: new URL(url, window.location.href).href}
+}
+
+const normalizeCurrentNavigationState = function() {
+  if (history.state && history.state.hypergen_url) return
+  const state = Object.assign({}, history.state, navigationState(window.location.href))
+  delete state.callback_url
+  history.replaceState(state, '', window.location.href)
+}
+
+let navigationGeneration = 0
+
+export const navigate = async function(event, url, historyMode='push') {
+  if (event) {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+  if (!['push', 'replace', 'none'].includes(historyMode)) {
+    throw new Error(`Unsupported history mode: ${historyMode}`)
+  }
+
+  const resolvedUrl = new URL(url, window.location.href).href
+  const generation = ++navigationGeneration
+  window.dispatchEvent(
+    new CustomEvent('hypergen.navigate.before', {
+      detail: {event, url: resolvedUrl, history: historyMode},
+    }),
+  )
+
+  let response
+  try {
+    response = await fetch(resolvedUrl, {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: {
+        'X-Hypergen-Partial': '1',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-Pathname': window.location.pathname,
+      },
+    })
+  } catch (error) {
+    if (generation !== navigationGeneration) return
+    throw error
+  }
+  if (generation !== navigationGeneration) return
+  if (!response.ok && response.status !== 302) {
+    throw new Error(`Hypergen navigation failed with status ${response.status}.`)
+  }
+
+  const text = await response.text()
+  if (generation !== navigationGeneration) return
+  const commands = JSON.parse(text, reviver)
+  if (generation !== navigationGeneration) return
+
+  applyCommands(commands)
+  if (historyMode === 'push') {
+    normalizeCurrentNavigationState()
+    history.pushState(navigationState(resolvedUrl), '', resolvedUrl)
+  } else if (historyMode === 'replace') {
+    history.replaceState(navigationState(resolvedUrl), '', resolvedUrl)
+  }
+  onpushstate()
+  window.dispatchEvent(
+    new CustomEvent('hypergen.navigate.after', {
+      detail: {event, url: resolvedUrl, history: historyMode},
+    }),
+  )
+}
+
 const MISSING_ELEMENT_EXCEPTION = "MISSING_ELEMENT_EXCEPTION"
 
 // coerce functions
@@ -632,6 +938,16 @@ window.addEventListener("popstate", function(event) {
     window.location = location.href
   }
 })
+
+window.addEventListener(
+  'popstate',
+  function(event) {
+    if (!event.state || !event.state.hypergen_url) return
+    event.stopImmediatePropagation()
+    navigate(event, event.state.hypergen_url, 'none')
+  },
+  {capture: true},
+)
 
 const pushstate = new Event('hypergen.pushstate')
 
