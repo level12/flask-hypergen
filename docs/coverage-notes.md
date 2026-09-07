@@ -9,6 +9,7 @@ behavior that flask_hypergen does not implement, or contrived environments (opti
 dependencies uninstalled, internal invariants forced into impossible states) that would
 add maintenance cost without testing anything meaningful.
 
+
 ## Intentional `xfail`: Django legacy middleware placeholder
 
 `tests/flask_hypergen_tests/test_core_ported.py` contains:
@@ -20,6 +21,7 @@ add maintenance cost without testing anything meaningful.
 def test_context_middleware_old():
     raise AssertionError()
 ```
+
 
 ### Background
 
@@ -50,6 +52,7 @@ def test_context_middleware_old():
     assert context.request.user.pk == 1
 ```
 
+
 ### Why it is an `xfail` placeholder here
 
 flask_hypergen is a Flask port and has **no dependency on Django**, so the
@@ -64,10 +67,12 @@ preserve a one-to-one mapping with the upstream test suite, making it obvious to
 readers that this Django-specific legacy path was considered and intentionally dropped
 rather than overlooked. It is expected to remain `xfailed` indefinitely.
 
+
 ## Remaining uncovered source lines/branches
 
 As of the latest run, total coverage is **99%**. The handful of uncovered
 lines/branches below are intentional.
+
 
 ### `src/flask_hypergen/template.py`
 
@@ -84,6 +89,7 @@ its lazy loader is invoked), which is not the case in the standard test environm
   The guard that raises when `docutils` is missing is tested; the success path requires
   `docutils` to be installed.
 
+
 ### `src/flask_hypergen/imports.py`
 
 - **Line 22** — the `continue` in the flat-namespace dedup loop:
@@ -98,6 +104,7 @@ its lazy loader is invoked), which is not the case in the standard test environm
   Given the current module set and their `__all__` definitions, no such collision
   exists, so the line is unreachable today. It is retained to keep the re-export logic
   robust against future additions.
+
 
 ### `src/flask_hypergen/liveview.py`
 

@@ -11,6 +11,7 @@ directory, the command/process MUST BE READ-ONLY.
 
 If you are ever confused about what you have permission to do, stop and ask.
 
+
 ## Exception: temporary files / directories
 
 Exceptions to the permission policies:
@@ -19,6 +20,7 @@ Exceptions to the permission policies:
 - Ok: create/update runtime artifacts like `.pyc`
 - Ok: to make changes with uv that impact this project's venv ONLY
 - OK: changes to the databases defined in this app's docker compose
+
 
 ## Conditional Instructions Index
 
@@ -38,10 +40,12 @@ Exceptions to the permission policies:
 
 - Use ripgrep `/usr/bin/rg` instead of `grep` because it's faster
 
+
 # File paths prefer dashes
 
 UNLESS it's a `*.py` file, prefer dashes (`-`) in file paths and names instead of
 underscores.
+
 
 # Hypergen Reference
 

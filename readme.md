@@ -4,6 +4,7 @@
 
 Flask integration for Hypergen, with a repo-root `examples/` app for local development.
 
+
 ## Run the examples
 
 1. Sync the dev environment:
@@ -68,6 +69,7 @@ Versions are date based. A `version` task shows and bumps versions:
   # See other options
   mise version -- --help
 ```
+
 
 ### Coverage Notes
 

@@ -3,6 +3,12 @@ flavor = "gfm"
 line-length = 90
 
 
+[per-file-ignores]
+'AGENTS.md' = ['MD025']
+'specs/2026-04-07-flask-hypergen.md' = ['MD013', 'MD024']
+'specs/2026-04-08-flask-hypergen.md' = ['MD033']
+
+
 # MD013: Line length.
 # Ignore line length for code blocks and tables.
 # Reflow normal prose where possible.
