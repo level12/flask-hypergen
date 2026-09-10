@@ -4,6 +4,7 @@ import re
 from types import SimpleNamespace
 from unittest import mock
 
+from flask import Blueprint
 from pyrsistent import pmap
 import pytest
 from werkzeug.exceptions import Forbidden
@@ -824,6 +825,28 @@ def test_route_register_resolve_and_reverse():
 
     with pytest.raises(TypeError, match='Too many positional'):
         func_obj.reverse('extra')
+
+
+@pytest.mark.parametrize(
+    ('rule', 'expected_url'),
+    [('', '/routes'), (None, '/routes/my_view/'), ('/custom/', '/routes/custom/')],
+)
+def test_route_register_blueprint_rule(app, client, rule, expected_url):
+    blueprint = Blueprint('routes', __name__, url_prefix='/routes')
+
+    def my_view():
+        return 'route response'
+
+    func_obj = route_register(blueprint, my_view, rule=rule)
+    app.register_blueprint(blueprint)
+
+    response = client.get(expected_url)
+    assert response.status_code == 200
+    assert response.text == 'route response'
+
+    with app.test_request_context():
+        assert func_obj.reverse() == expected_url
+        assert resolve_url(expected_url).func is func_obj
 
 
 def test_plugins_method_call_and_pipeline():

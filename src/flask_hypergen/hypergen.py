@@ -271,7 +271,7 @@ def route_register(
     _ENDPOINTS[qualified_endpoint] = func_obj
     if router is not None:
         router.add_url_rule(
-            rule or f'/{func_name}/',
+            f'/{func_name}/' if rule is None else rule,
             endpoint,
             func_obj,
             methods=methods,
