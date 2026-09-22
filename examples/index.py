@@ -57,6 +57,12 @@ EXAMPLES: tuple[ExampleCard, ...] = (
         'Forms',
     ),
     ExampleCard(
+        'Native Form Submission',
+        'forms.demo',
+        'Submit standard HTML fields and files through native FormData.',
+        'Forms',
+    ),
+    ExampleCard(
         'Commands',
         'commands.demo',
         'Return explicit client commands instead of a full fragment render.',

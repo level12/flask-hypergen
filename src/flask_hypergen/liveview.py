@@ -392,6 +392,7 @@ def callback(
     when: Any = None,
     each_url_blocks: bool = True,
     timeout: int = 20000,
+    form: bool = False,
 ) -> CallbackRenderer:
     meta = meta or {}
     headers = headers or {}
@@ -408,6 +409,8 @@ def callback(
             return element if x is THIS else x
 
         element.ensure_id()
+        if form:
+            assert element.tag == 'form', 'callback(form=True) must be rendered on a form element.'
         cmd = command(
             'hypergen.callback',
             url,
@@ -424,6 +427,7 @@ def callback(
                 'headers': headers,
                 'blocksEachUrl': each_url_blocks,
                 'timeout': timeout,
+                **({'formId': element.attrs['id_']} if form else {}),
             },
             return_=True,
         )
@@ -444,6 +448,7 @@ def callback(
             'when': when,
             'blocksEachUrl': each_url_blocks,
             'timeout': timeout,
+            'form': form,
         }.items()
         if value
     }
