@@ -4,6 +4,7 @@ from flask_login import LoginManager
 import examples.apptemplate as apptemplate
 import examples.auth as auth
 import examples.commands as commands
+import examples.forms as forms
 import examples.hellocoreonly as hellocoreonly
 import examples.hellohypergen as hellohypergen
 import examples.index as index
@@ -32,6 +33,7 @@ def create_app(testing: bool = False, database_url: str | None = None) -> Flask:
     app.register_blueprint(hellohypergen.bp)
     app.register_blueprint(inputs.bp)
     app.register_blueprint(commands.bp)
+    app.register_blueprint(forms.bp)
     app.register_blueprint(apptemplate.bp)
     app.register_blueprint(partialload.bp)
     app.register_blueprint(make_sqlalchemy_blueprint(database_url or default_database_url()))

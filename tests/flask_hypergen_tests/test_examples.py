@@ -8,6 +8,7 @@ def test_example_routes_render(client):
         '/hellocoreonly/counter': 'Core-only wiring',
         '/hellohypergen/counter': 'Decorator wiring',
         '/inputs/demo': 'Read values from the browser',
+        '/forms/demo': 'Submit standard HTML fields',
         '/commands/demo': 'Explicit command responses',
         '/apptemplate/counter': 'Context-manager base template',
         '/partialload/page1': 'Partial loading with history support',
@@ -37,6 +38,7 @@ def test_example_index_lists_examples(client):
         '/hellocoreonly/counter',
         '/hellohypergen/counter',
         '/inputs/demo',
+        '/forms/demo',
         '/commands/demo',
         '/apptemplate/counter',
         '/partialload/page1',
@@ -89,6 +91,24 @@ def test_inputs_demo_renders_non_empty_summary(client):
     body = response.get_data(as_text=True)
     assert response.status_code == 200
     assert '<p id="summary">Submit the form to see a summary.</p>' in body
+
+
+def test_native_form_data_coexists_with_hypergen_arguments(client):
+    response = client.post(
+        '/forms/submit',
+        data={
+            'name': 'Ada',
+            'tag': ['python', 'flask'],
+            'csrf_token': 'token',
+            'hypergen_data': dumps({'args': ['callback argument']}),
+        },
+        headers={'Referer': 'http://localhost/forms/demo'},
+    )
+    payload = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'name=Ada; tags=python,flask' in payload
+    assert 'csrf=token; file=none; arg=callback argument' in payload
 
 
 def test_commands_demo_returns_explicit_commands(client):

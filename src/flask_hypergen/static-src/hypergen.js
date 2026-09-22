@@ -170,7 +170,7 @@ var isBlocked = false
 var urlBlocks = {}
 export const callback = function(url, args, {debounce=0, confirm_=false, blocks=false, blocksEachUrl=true, uploadFiles=false,
                                              params={}, meta={}, clear=false, elementId=null, debug=false,
-                                             event=null, headers={}, onSucces=null, timeout=20000}={}, ) {
+                                             event=null, headers={}, onSucces=null, timeout=20000, formId=null}={}, ) {
 
   const isWebsocket = (url.startsWith("ws://") || url.startsWith("wss://"))
 
@@ -185,7 +185,9 @@ export const callback = function(url, args, {debounce=0, confirm_=false, blocks=
     i++
 
     // The element function must have access to the FormData.
-    hypergen.hypergenGlobalFormdata = new FormData()
+    hypergen.hypergenGlobalFormdata = formId === null
+      ? new FormData()
+      : new FormData(document.getElementById(formId))
     hypergen.hypergenUploadFiles = uploadFiles
     try {
       json = JSON.stringify({

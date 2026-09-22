@@ -29,6 +29,7 @@ from flask_hypergen import (
 )
 from flask_hypergen.context import (
     ContextMiddleware,
+    c,
     context,
     context_init_app,
     context_middleware,
@@ -63,7 +64,9 @@ from flask_hypergen.liveview import callback as cb
 from flask_hypergen.tags import (
     a,
     body,
+    button,
     div,
+    form,
     h1,
     h2,
     head,
@@ -339,6 +342,53 @@ def test_callback():
 
         element = input_(oninput=cb(f1, THIS, 200, debounce=500), id_='testcb')
         assert isinstance(cb('foo', 42, debounce=42)(element, 'oninput', 92), list)
+
+
+class TestFormCallback:
+    def test_renders_form_id_in_callback_options(self):
+        with context(is_test=True, at='hypergen', **hypergen_context()):
+
+            @mock_hypergen_callback
+            def save():
+                pass
+
+            form(id_='profile-form', onsubmit=cb(save, 'argument', form=True))
+
+            command_ = c.hypergen.event_handler_callbacks['profile-form__onsubmit']
+            assert command_[2] == ['argument']
+            assert command_[3]['formId'] == 'profile-form'
+
+    def test_rejects_non_form_element(self):
+        with context(is_test=True, at='hypergen', **hypergen_context()):
+
+            @mock_hypergen_callback
+            def save():
+                pass
+
+            with pytest.raises(AssertionError, match='must be rendered on a form element'):
+                button('Save', id_='save', onclick=cb(save, form=True))
+
+    def test_requires_explicit_form_id(self):
+        with context(is_test=True, at='hypergen', **hypergen_context()):
+
+            @mock_hypergen_callback
+            def save():
+                pass
+
+            with pytest.raises(AssertionError, match="needs an id_='myid' attribute"):
+                form(onsubmit=cb(save, form=True))
+
+    def test_ordinary_callback_has_no_form_id(self):
+        with context(is_test=True, at='hypergen', **hypergen_context()):
+
+            @mock_hypergen_callback
+            def save():
+                pass
+
+            button('Save', id_='save', onclick=cb(save))
+
+            command_ = c.hypergen.event_handler_callbacks['save__onclick']
+            assert 'formId' not in command_[3]
 
 
 def test_components():
